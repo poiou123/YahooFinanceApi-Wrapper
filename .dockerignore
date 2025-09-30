@@ -35,3 +35,5 @@ docker-compose.yml
 # Environment files
 .env
 *.env
+
+apiKeyDev.json
