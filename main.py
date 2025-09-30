@@ -1,11 +1,21 @@
-
 import json
+import os
 from flask import Flask
 from flask import jsonify
 import requests
 from flask import Response
 
+CONTENT_TYPE = "application/json"
+
 app = Flask(__name__)
+def get_api_key():
+    api_key = os.environ.get("YF_API_KEY")
+    if api_key:
+        return api_key
+    else:
+        with open("apiKeyDev.json") as f:
+            return json.load(f)["apiKey"]
+
 
 @app.route("/health", methods=['GET'])
 def healthcheck():
@@ -19,56 +29,59 @@ def quote(symbol):
         "region": "PT",
         "lang": "en"
     }
-    keyFile = open("apiKeyDev.json")
-    apiKeyJson=json.load(keyFile)
-    apiKey=apiKeyJson["apiKey"]
+
+    api_key = get_api_key()
     headers = {
-        'X-API-KEY': apiKey,
-        'accept': "application/json",
+        'X-API-KEY': api_key,
+        'accept': CONTENT_TYPE,
         'User-Agent': '',
         'Accept-Encoding': '',
         'Connection': ''
     }
-    keyFile.close()
     response = requests.request("GET", url, headers=headers, params=querystring)
-    jsonSTR = response.content
-    data = json.loads(jsonSTR)
-    if "message" in data:
-        r = Response(response='Daily request limit reached', status=429, mimetype="application/json")
-        print(429, 'Daily request limit reached')
-        return r
-    else:
-        if ("quoteResponse" not in data) or (data["quoteResponse"] is None):
-            r = Response(response='Symbol not found', status=404, mimetype="application/json")
-            print(404, 'Symbol not found')
-        else:
-            quote = data["quoteResponse"]
+    data = json.loads(response.content)
 
-        result = quote["result"]
-        if len(result) > 0:
-            dictionary = {}
-            for i in result:
-                if ("longName" not in i) or (i["longName"] is None):
-                    ln=""
-                else:
-                    ln=i["longName"]
-                    
-                dictionary = {
-                    "currency": i["currency"],
-                    "shortMarket": i["exchange"],
-                    "market": i["fullExchangeName"],
-                    "shortName": i["shortName"],
-                    "name": ln,
-                    "price": i["regularMarketPrice"],
-                    "symbol": i["symbol"]
-                }
-            json_object = json.dumps(dictionary, indent=4)
-            r = Response(response=json_object, status=200, mimetype="application/json")
-            return r
-        else:
+    def handle_limit_reached(data):
+        if "message" in data:
+            print(429, 'Daily request limit reached')
+            return Response(response='Daily request limit reached', status=429, mimetype=CONTENT_TYPE)
+        return None
+
+    def handle_symbol_not_found(data):
+        if ("quoteResponse" not in data) or (data["quoteResponse"] is None):
+            print(404, 'Symbol not found')
+            return Response(response='Symbol not found', status=404, mimetype=CONTENT_TYPE)
+        return None
+
+    def build_quote_response(result):
+        if len(result) == 0:
             print(404, "Symbol not found")
-            r = Response(response="Symbol not found", status=404, mimetype="application/json")
-            return r
+            return Response(response="Symbol not found", status=404, mimetype=CONTENT_TYPE)
+        i = result[0]
+        ln = i.get("longName", "") if i.get("longName") is not None else ""
+        dictionary = {
+            "currency": i.get("currency", ""),
+            "shortMarket": i.get("exchange", ""),
+            "market": i.get("fullExchangeName", ""),
+            "shortName": i.get("shortName", ""),
+            "name": ln,
+            "price": i.get("regularMarketPrice", ""),
+            "symbol": i.get("symbol", "")
+        }
+        json_object = json.dumps(dictionary, indent=4)
+        return Response(response=json_object, status=200, mimetype=CONTENT_TYPE)
+
+    limit_response = handle_limit_reached(data)
+    if limit_response:
+        return limit_response
+
+    not_found_response = handle_symbol_not_found(data)
+    if not_found_response:
+        return not_found_response
+
+    quote = data["quoteResponse"]
+    result = quote.get("result", [])
+    return build_quote_response(result)
 
 
 if __name__ == '__main__':
