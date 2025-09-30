@@ -46,5 +46,6 @@ jobs:
             Docker image published:
             - `latest`
             - `${{ env.TAG_NAME }}`
+            DockerHub: https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/yahoofinanceapi-wrapper
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
